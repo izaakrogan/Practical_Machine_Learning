@@ -210,15 +210,12 @@ gbmAccuracyStats
 
 Random Forest Algorithm provided the best accuracy for testing data.
 
-Comparing the overall accuracy as observed for Decision Tree ( **`r I(round(CT_CMatrix$overall['Accuracy'], 4)*100.0)`%** ),
-the Random Forest Algorithm Accuracy (**`r I(round(RF_CMatrix$overall['Accuracy'], 4)*100.00)`%** ) And
-the Accuracy as seen in GBM (**`r I(round(gbmAccuracyStats$overall['Accuracy'], 4)*100.00)`%** ), We can conclude that
-Random Forest provides the best accuracy over other algorithms.
-The **Out-Of-Sample** error is (**100.00-`r I(round(RF_CMatrix$overall['Accuracy'], 4)*100.0)`**=**`r I(100.00-(round(RF_CMatrix$overall['Accuracy'],4)*100.0))`**).
-So, expected error rate of less than 1% an important aspect fulfilled.
+Comparing the overall accuracy as observed for Decision Tree ( 73.06% ), the Random Forest Algorithm Accuracy (99.29% ) And 
+the Accuracy as seen in GBM (96.28% ), We can conclude that Random Forest provides the best accuracy over other algorithms. 
+The Out-Of-Sample error is (100.00-99.29=0.71). So, expected error rate of less than 1% an important aspect fulfilled.
 
--- For Random Forest, we will finally apply prediction to the in-sample testing data. We have been given 20 test cases
-   to generate predictions for them, we will then store the results in text files for each case.
+– For Random Forest, we will finally apply prediction to the in-sample testing data. We have been given 20 test cases to 
+  generate predictions for them, we will then store the results in text files for each case.
 
 ```{r}
 Final_RF_Prediction <- predict(RfModFit, Submission_Test_Data, type = "class")
