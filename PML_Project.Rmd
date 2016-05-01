@@ -1,0 +1,250 @@
+### Johns Hopkins Data Science Project (Coursera) :  Practical Machine Learning
+
+####                **Predicting Exercise Activity Quality**
+
+######  By  Chetan Bhatt
+
+#### Synopsis
+
+Using devices such as JawboneUp, NikeFuelBand and Fitbit, it is now possible to collect a large amount 
+of data about personal activity relatively inexpensively. In this project we will use data from the
+study 'Qualitative Activity Recognition of Weight Lifting Exercises' (see reference), in which exercise
+data was collected for six participants participated in a dumbell lifting exercise five different ways, using
+such electronic devices through their sensors.
+Our goal here is to apply appropriate machine learning algorithm, training and testing data and predict the
+manner in which they did the exercise. Question here is how best can we predict the quality of the 
+exercise activity? 
+
+GIT REPO For the Project is HERE :  **https://github.com/xde0037/Practical_Machine_Learning.git**
+
+#### Sourcing, Loading and Processing Data
+
+We will use the training and testing data from the study as mentioned in this report:
+[1] Training Data : http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+[2] Testing Data  : http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+```{r warning=FALSE }
+# load essential libraries
+suppressMessages(library(caret))
+suppressMessages(library(ggplot2))
+suppressMessages(library(randomForest))
+suppressMessages(library(AppliedPredictiveModeling))
+suppressMessages(library(rattle))
+suppressMessages(library(rpart.plot))
+suppressMessages(library(gbm))
+
+# download the data files if they do not already exist.
+
+rm(list = ls())
+if (!file.exists("pml-training.csv")) {
+  download.file("http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", destfile = "pml-training.csv")
+}
+if (!file.exists("pml-testing.csv")) {
+  download.file("http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", destfile = "pml-testing.csv")
+}
+# read testing and training data from CSV file and define NA's, nulls and error rows.
+TestingData  <- read.csv("pml-testing.csv",  sep = ",", na.strings = c("", "NA", "#DIV/0!"))
+TrainingData <- read.csv("pml-training.csv", sep = ",", na.strings = c("", "NA", "#DIV/0!"))
+
+# Column Names
+TestingColNames <- colnames(TestingData)
+TrainingColNames <- colnames(TrainingData)
+# this checks column names in both set are exactly same (excluding classe and problem_id).
+all.equal(TrainingColNames[1:length(TrainingColNames)-1], TestingColNames[1:length(TestingColNames)-1])
+```
+
+-- We will apply all analysis on **TrainingData**.
+-- The **str(TrainingData)** command shows that we have **19622** observations, and **160** variables.
+-- From dataset, we can see that first 7 columns are not required and most important variable 
+   is **classe**, which we want to predict, while using other variables.
+
+##### Partitioning data for test and training:
+
+We will partition data into 60% and 40% for training set and testing set respectively.
+
+```{r}
+set.seed(39)
+Train_Partition <- createDataPartition(y=TrainingData$classe, p=0.6, list=FALSE)
+TrainPart <- TrainingData[Train_Partition, ]
+TestPart  <- TrainingData[-Train_Partition, ]
+```
+
+##### Cleaning Data
+
+-- We will remove all NA type variables
+```{r}
+# Total non-NAs in each column
+nonNAs <- function(x) {
+    as.vector(apply(x, 2, function(x) length(which(!is.na(x)))))
+}
+# Get the vector of NA columns to drop.
+NumCols <- nonNAs(TrainPart)
+dropCols <- c()
+for (I in 1:length(NumCols)) {
+    if (NumCols[I] < nrow(TrainPart)) {
+        dropCols <- c(dropCols, TrainingColNames[I])
+    }
+}
+
+# TidyUp Training Data : First 7 columns are not required for prediction so we remove them alongwith all NA Rows.
+TrainingPart <- TrainPart[,!(names(TrainPart) %in% dropCols)]
+TrainingPart <- TrainingPart[,8:length(colnames(TrainingPart))]
+
+# Similarly remove same set of data and columns for testing partition as well
+TestingPart <- TestPart[,!(names(TestPart) %in% dropCols)]
+TestingPart <- TestingPart[,8:length(colnames(TestingPart))]
+
+# Similarly for the Submission Data Set as got from testing data csv file from download.
+SubmitPart_01 <- TestingData[,!(names(TestingData) %in% dropCols)]
+SubmitPart    <- SubmitPart_01[,8:length(colnames(SubmitPart_01))]
+Submission_Test_Data <- SubmitPart
+```
+
+-- We will remove all variable with near zero variance:
+
+```{r}
+nzv <- nearZeroVar(TrainingPart, saveMetrics=TRUE)
+TrainingNZV <- TrainingPart[,nzv$nzv==FALSE]
+
+nzv <- nearZeroVar(TestingPart,saveMetrics=TRUE)
+TestingNZV <- TestingPart[,nzv$nzv==FALSE]
+
+TrainingPart <- TrainingNZV
+TestingPart  <- TestingNZV
+```
+
+```{r}
+# training set will be used in model building
+dim(TrainingPart)
+```
+
+```{r}
+# testing set will be used in applying the algorithms
+dim(TestingPart)
+```
+
+```{r}
+# this data set is for submission of final prediction output
+dim(Submission_Test_Data)
+```
+
+#### Algorithms And Model Selection
+
+In order to arrive at decision sooner, we will use testing data to apply ML algorithms. We will use three
+algorithms (based on information from the reference paper) here on testing data : Classification Tree **(rpart)**
+and Random Forest **(rf)** and Gradient Boosting **(gbm)**. (Reference to lecture notes).
+
+We will then compare accuracy of each model to see which one provides best accuracy. These steps are 
+provided below:
+
+#### [1] Classification Tree : 
+
+Let us look at decision tree algorithm and its prediction.
+
+```{r}
+set.seed(12345)
+# Create Tree Model with rpart function, With Training Data Set
+CtModFit <- rpart(classe ~ ., data=TrainingPart, method="class")
+```
+##### Prediction and Accuracy for Decision Tree:
+
+```{r}
+# Generate prediction stats for Decision Tree and then Confusion Matrix, using **Testing** Data Set.
+CtPrediction <- predict(CtModFit, TestingPart, type = "class")
+CT_CMatrix <- confusionMatrix(CtPrediction, TestingPart$classe)
+CT_CMatrix
+```
+
+```{r}
+# View the Confusion matrix plot for Decision Tree
+plot(CT_CMatrix$table, col = CT_CMatrix$byClass, main = paste("Confusion Matrix(Decision Tree): OverAll Accuracy =", + 
+                        round(CT_CMatrix$overall['Accuracy'], 4)))
+```
+
+#### [2] Random Forest Model : 
+
+         Now let us look at Random Forest Algorithm :
+
+```{r}
+set.seed(12345)
+# Apply randomForest ML algorithm and create Random Forest Model, With Training Data Set
+RfModFit <- randomForest(classe ~ ., data=TrainingPart)
+RF_TrainFit <- train(classe ~ ., method = "rf", 
+                data = TrainingPart, importance = T, 
+                trControl = trainControl(method = "cv", number = 3))
+```
+##### Prediction and Accuracy for Random Forest Algorithm:
+
+```{r}
+# Generate prediction stats for RF Algorithm and then Confusion Matrix, using **Testing** Data Set.
+RF_prediction <- predict(RfModFit, TestingPart, type = "class")
+RF_CMatrix<- confusionMatrix(RF_prediction, TestingPart$classe)
+RF_CMatrix
+```
+
+```{r}
+# View the Confusion matrix plot for Random Forest
+plot(RF_CMatrix$table, col = RF_CMatrix$byClass, main = paste("Confusion Matrix (RF): OverAll Accuracy=", + 
+                 round(RF_CMatrix$overall['Accuracy'], 4)))
+```
+```{r}
+plot(varImp(RF_TrainFit), top = 10, main="RF Feature Importance")
+```
+
+#### [3] Model and Prediction Using Gradient Boosting Algorithm (GBM):
+
+```{r}
+set.seed(12345)
+# keep 5 folds (number of sampling iterations) and 1-fold repeated cross validations
+T_Control <- trainControl(method = "repeatedcv",number = 5,repeats = 1)
+
+gbmModelFit <- train(classe ~ ., data=TrainingPart, method = "gbm",trControl = T_Control,verbose=FALSE)
+gbmFinModel <- gbmModelFit$finalModel
+
+gbmPrediction    <- predict(gbmModelFit, newdata=TestingPart)
+gbmAccuracyStats <- confusionMatrix(gbmPrediction, TestingPart$classe)
+gbmAccuracyStats
+```
+
+#### Results
+
+Random Forest Algorithm provided the best accuracy for testing data.
+
+Comparing the overall accuracy as observed for Decision Tree ( **`r I(round(CT_CMatrix$overall['Accuracy'], 4)*100.0)`%** ),
+the Random Forest Algorithm Accuracy (**`r I(round(RF_CMatrix$overall['Accuracy'], 4)*100.00)`%** ) And
+the Accuracy as seen in GBM (**`r I(round(gbmAccuracyStats$overall['Accuracy'], 4)*100.00)`%** ), We can conclude that
+Random Forest provides the best accuracy over other algorithms.
+The **Out-Of-Sample** error is (**100.00-`r I(round(RF_CMatrix$overall['Accuracy'], 4)*100.0)`**=**`r I(100.00-(round(RF_CMatrix$overall['Accuracy'],4)*100.0))`**).
+So, expected error rate of less than 1% an important aspect fulfilled.
+
+-- For Random Forest, we will finally apply prediction to the in-sample testing data. We have been given 20 test cases
+   to generate predictions for them, we will then store the results in text files for each case.
+
+```{r}
+Final_RF_Prediction <- predict(RfModFit, Submission_Test_Data, type = "class")
+Final_RF_Prediction
+```
+
+We will now use **Final_RF_Prediction** to generate prediction data files. It generates 20 output files.
+
+```{r}
+Gen_PML_Files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+
+Gen_PML_Files(Final_RF_Prediction)
+```
+
+##### References :
+
+[1] Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. 
+    Qualitative Activity Recognition of Weight Lifting Exercises. 
+    Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13). 
+    Stuttgart, Germany: ACM SIGCHI, 2013.
+
+[2] Lecture Videos and Notes from Practical Machine Learning Course , JHU, Coursera.
+
